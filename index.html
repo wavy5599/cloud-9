@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cloud 9</title>
+  <style>
+    :root {
+      --bg: #081120;
+      --bg2: #0e1830;
+      --panel: rgba(16, 24, 45, 0.9);
+      --panel2: rgba(24, 35, 66, 0.95);
+      --border: rgba(255,255,255,0.08);
+      --text: #eef4ff;
+      --muted: #aab8d8;
+      --accent: #74a7ff;
+      --accent2: #88ffd7;
+      --good: #72f0a5;
+      --warn: #ffd36a;
+      --danger: #ff7d8d;
+      --radius: 22px;
+      --shadow: 0 18px 40px rgba(0,0,0,0.35);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: Inter, Arial, sans-serif;
+      color: var(--text);
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top left, rgba(116,167,255,0.18), transparent 30%),
+        radial-gradient(circle at top right, rgba(136,255,215,0.14), transparent 26%),
+        linear-gradient(180deg, var(--bg) 0%, #050b15 100%);
+      padding: 24px;
+    }
+
+    .app {
+      max-width: 1350px;
+      margin: 0 auto;
+      display: grid;
+      gap: 20px;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      padding: 18px 22px;
+      border-radius: var(--radius);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .logo {
+      width: 56px;
+      height: 56px;
+      border-radius: 18px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #07111d;
+      display: grid;
+      place-items: center;
+      font-size: 1.5rem;
+      font-weight: 800;
+      box-shadow: 0 8px 30px rgba(116,167,255,0.35);
+    }
+
+    .brand h1 {
+      font-size: 1.45rem;
+    }
+
+    .brand p {
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    .top-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .input, button, select {
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.05);
+      color: var(--text);
+      padding: 12px 14px;
+      border-radius: 14px;
+      font: inherit;
+      transition: 0.2s ease;
+    }
+
+    .input:focus, select:focus, button:hover {
+      outline: none;
+      border-color: rgba(116,167,255,0.45);
+      box-shadow: 0 8px 25px rgba(116,167,255,0.12);
+      transform: translateY(-1px);
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    .primary {
+      background: linear-gradient(135deg, var(--accent), #9bc2ff);
+      color: #07111d;
+      font-weight: 700;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 20px;
+    }
+
+    .sidebar, .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+    }
+
+    .sidebar {
+      padding: 18px;
+      height: fit-content;
+      display: grid;
+      gap: 18px;
+    }
+
+    .section-label {
+      color: var(--muted);
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      margin-bottom: 8px;
+    }
+
+    .nav-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .nav-btn {
+      width: 100%;
+      text-align: left;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-radius: 16px;
+      padding: 14px;
+      color: var(--text);
+    }
+
+    .nav-btn.active {
+      background: rgba(116,167,255,0.14);
+      border-color: rgba(116,167,255,0.28);
+    }
+
+    .small-muted {
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+
+    .storage-box {
+      padding: 16px;
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+      border: 1px solid var(--border);
+    }
+
+    .bar {
+      height: 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.08);
+      overflow: hidden;
+      margin: 12px 0 8px;
+    }
+
+    .bar-fill {
+      height: 100%;
+      width: 38%;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      border-radius: inherit;
+      transition: width 0.3s ease;
+    }
+
+    .main {
+      display: grid;
+      gap: 20px;
+    }
+
+    .hero {
+      padding: 24px;
+      display: grid;
+      grid-template-columns: 1.3fr 0.9fr;
+      gap: 18px;
+    }
+
+    .hero h2 {
+      font-size: 2rem;
+      margin-bottom: 10px;
+    }
+
+    .hero p {
+      color: var(--muted);
+      line-height: 1.6;
+      max-width: 60ch;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 18px;
+    }
+
+    .status-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .status-card {
+      padding: 16px;
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+    }
+
+    .status-card strong {
+      font-size: 1.2rem;
+      display: block;
+      margin-top: 8px;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+
+    .metric {
+      padding: 18px;
+      border-radius: 18px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+
+    .metric h3 {
+      color: var(--muted);
+      font-size: 0.9rem;
+      font-weight: 500;
+      margin-bottom: 12px;
+    }
+
+    .metric .value {
+      font-size: 1.8rem;
+      font-weight: 800;
+    }
+
+    .metric .sub {
+      color: var(--muted);
+      margin-top: 8px;
+      font-size: 0.9rem;
+    }
+
+    .content-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 20px;
+    }
+
+    .panel-header {
+      padding: 18px 20px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .panel-body {
+      padding: 18px 20px 20px;
+    }
+
+    .files-toolbar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    .files-list, .activity-list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .file-item {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 14px;
+      align-items: center;
+      padding: 14px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+    }
+
+    .file-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      background: rgba(116,167,255,0.13);
+      font-size: 1.2rem;
+    }
+
+    .file-name {
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .tag {
+      display: inline-block;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.06);
+      color: var(--muted);
+      font-size: 0.78rem;
+      margin-right: 6px;
+      margin-top: 6px;
+    }
+
+    .file-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .activity-item {
+      padding: 14px;
+      border-radius: 16px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+    }
+
+    .activity-time {
+      color: var(--muted);
+      font-size: 0.84rem;
+      margin-top: 6px;
+    }
+
+    .settings-grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .setting-row {
+      display: grid;
+      gap: 8px;
+      padding: 14px;
+      border-radius: 16px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .footer-note {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+      padding: 4px;
+    }
+
+    @media (max-width: 1100px) {
+      .layout,
+      .hero,
+      .content-grid,
+      .cards {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 700px) {
+      body {
+        padding: 14px;
+      }
+
+      .hero h2 {
+        font-size: 1.55rem;
+      }
+
+      .file-item {
+        grid-template-columns: 1fr;
+      }
+
+      .file-actions {
+        justify-content: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo">C9</div>
+        <div>
+          <h1>Cloud 9</h1>
+          <p>your personal cloud dashboard</p>
+        </div>
+      </div>
+
+      <div class="top-actions">
+        <input id="globalSearch" class="input" type="text" placeholder="Search files or activity..." />
+        <button class="primary" id="quickUploadBtn">+ Upload</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <div>
+          <div class="section-label">Navigation</div>
+          <div class="nav-list">
+            <button class="nav-btn active" data-view="dashboard">
+              <span>Dashboard</span>
+              <small class="small-muted">Home</small>
+            </button>
+            <button class="nav-btn" data-view="files">
+              <span>Files</span>
+              <small class="small-muted">Storage</small>
+            </button>
+            <button class="nav-btn" data-view="activity">
+              <span>Activity</span>
+              <small class="small-muted">Logs</small>
+            </button>
+            <button class="nav-btn" data-view="settings">
+              <span>Settings</span>
+              <small class="small-muted">Config</small>
+            </button>
+          </div>
+        </div>
+
+        <div class="storage-box">
+          <div class="section-label">Storage</div>
+          <div><strong id="storagePercentLabel">38%</strong> used</div>
+          <div class="bar">
+            <div class="bar-fill" id="storageFill"></div>
+          </div>
+          <div class="small-muted"><span id="usedStorage">190 GB</span> of <span id="totalStorage">500 GB</span></div>
+        </div>
+
+        <div class="storage-box">
+          <div class="section-label">Server</div>
+          <div><strong id="serverStatusText">Online</strong></div>
+          <div class="small-muted" id="serverSubtext">Raspberry Pi connected</div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <section id="view-dashboard">
+          <div class="panel hero">
+            <div>
+              <h2>Manage your files, server, and sync tools in one place</h2>
+              <p>
+                Cloud 9 is your clean frontend for a Raspberry Pi powered personal cloud.
+                You can hook this into your backend later for real uploads, authentication,
+                logs, sync status, and device control.
+              </p>
+
+              <div class="hero-actions">
+                <button class="primary" id="heroUploadBtn">Upload file</button>
+                <button id="toggleServerBtn">Toggle server</button>
+                <button id="addSampleFileBtn">Add sample file</button>
+              </div>
+            </div>
+
+            <div class="status-grid">
+              <div class="status-card">
+                <div class="small-muted">System status</div>
+                <strong id="statusMain">Healthy</strong>
+                <div class="small-muted">All services running normally</div>
+              </div>
+
+              <div class="status-card">
+                <div class="small-muted">Last sync</div>
+                <strong id="lastSync">2 minutes ago</strong>
+                <div class="small-muted">Phone and Pi storage connected</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="cards">
+            <div class="metric">
+              <h3>Files stored</h3>
+              <div class="value" id="metricFiles">6</div>
+              <div class="sub">items in cloud storage</div>
+            </div>
+
+            <div class="metric">
+              <h3>Devices connected</h3>
+              <div class="value">3</div>
+              <div class="sub">laptop, phone, raspberry pi</div>
+            </div>
+
+            <div class="metric">
+              <h3>Upload speed</h3>
+              <div class="value">24 MB/s</div>
+              <div class="sub">local network average</div>
+            </div>
+
+            <div class="metric">
+              <h3>Server uptime</h3>
+              <div class="value" id="metricUptime">99.9%</div>
+              <div class="sub">last 30 days</div>
+            </div>
+          </div>
+
+          <div class="content-grid">
+            <div class="panel">
+              <div class="panel-header">
+                <h3>Recent files</h3>
+                <button id="openFilesViewBtn">View all</button>
+              </div>
+              <div class="panel-body">
+                <div class="files-list" id="dashboardFilesList"></div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header">
+                <h3>Recent activity</h3>
+              </div>
+              <div class="panel-body">
+                <div class="activity-list" id="dashboardActivityList"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="view-files" class="hidden">
+          <div class="panel">
+            <div class="panel-header">
+              <h3>Files</h3>
+              <div class="files-toolbar">
+                <input id="fileSearch" class="input" type="text" placeholder="Filter files..." />
+                <select id="fileTypeFilter">
+                  <option value="all">All types</option>
+                  <option value="Document">Documents</option>
+                  <option value="Image">Images</option>
+                  <option value="Video">Videos</option>
+                  <option value="Code">Code</option>
+                </select>
+                <button class="primary" id="uploadBtn">+ Add file</button>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="files-list" id="fullFilesList"></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="view-activity" class="hidden">
+          <div class="panel">
+            <div class="panel-header">
+              <h3>Activity log</h3>
+              <button id="clearActivityBtn">Clear log</button>
+            </div>
+            <div class="panel-body">
+              <div class="activity-list" id="fullActivityList"></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="view-settings" class="hidden">
+          <div class="panel">
+            <div class="panel-header">
+              <h3>Settings</h3>
+            </div>
+            <div class="panel-body">
+              <div class="settings-grid">
+                <div class="setting-row">
+                  <label for="serverName"><strong>Server name</strong></label>
+                  <input id="serverName" class="input" type="text" value="Cloud 9 Pi Server" />
+                </div>
+
+                <div class="setting-row">
+                  <label for="serverIp"><strong>Server IP</strong></label>
+                  <input id="serverIp" class="input" type="text" value="192.168.0.11" />
+                </div>
+
+                <div class="setting-row">
+                  <label for="themeMode"><strong>Theme mode</strong></label>
+                  <select id="themeMode">
+                    <option>Dark</option>
+                    <option>Night Blue</option>
+                    <option>Cyber Glow</option>
+                  </select>
+                </div>
+
+                <div class="setting-row">
+                  <button class="primary" id="saveSettingsBtn">Save settings</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div class="footer-note">
+          cloud 9 frontend demo — ready to connect to your backend
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const files = [
+      { id: 1, name: "emoticare_notes.pdf", type: "Document", size: "2.1 MB", updated: "5 min ago", icon: "📄" },
+      { id: 2, name: "pi_server_backup.zip", type: "Code", size: "148 MB", updated: "22 min ago", icon: "💾" },
+      { id: 3, name: "hackathon_pitch.pptx", type: "Document", size: "5.4 MB", updated: "1 hour ago", icon: "📊" },
+      { id: 4, name: "wavysway_banner.png", type: "Image", size: "1.8 MB", updated: "2 hours ago", icon: "🖼️" },
+      { id: 5, name: "cloud9_demo.mp4", type: "Video", size: "84 MB", updated: "today", icon: "🎥" },
+      { id: 6, name: "upload_api.js", type: "Code", size: "12 KB", updated: "today", icon: "🧠" }
+    ];
+
+    let activity = [
+      { text: "Server started successfully", time: "just now" },
+      { text: "Phone synced 12 files to Cloud 9", time: "2 min ago" },
+      { text: "Backup archive created", time: "14 min ago" },
+      { text: "New image uploaded", time: "1 hour ago" }
+    ];
+
+    let serverOnline = true;
+    let usedStorageGb = 190;
+    const totalStorageGb = 500;
+
+    const views = {
+      dashboard: document.getElementById("view-dashboard"),
+      files: document.getElementById("view-files"),
+      activity: document.getElementById("view-activity"),
+      settings: document.getElementById("view-settings")
+    };
+
+    const navButtons = document.querySelectorAll(".nav-btn");
+    const dashboardFilesList = document.getElementById("dashboardFilesList");
+    const fullFilesList = document.getElementById("fullFilesList");
+    const dashboardActivityList = document.getElementById("dashboardActivityList");
+    const fullActivityList = document.getElementById("fullActivityList");
+    const fileSearch = document.getElementById("fileSearch");
+    const fileTypeFilter = document.getElementById("fileTypeFilter");
+    const globalSearch = document.getElementById("globalSearch");
+
+    function switchView(viewName) {
+      Object.entries(views).forEach(([name, section]) => {
+        section.classList.toggle("hidden", name !== viewName);
+      });
+
+      navButtons.forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.view === viewName);
+      });
+    }
+
+    function renderStorage() {
+      const percent = Math.round((usedStorageGb / totalStorageGb) * 100);
+      document.getElementById("storagePercentLabel").textContent = percent + "%";
+      document.getElementById("usedStorage").textContent = usedStorageGb + " GB";
+      document.getElementById("totalStorage").textContent = totalStorageGb + " GB";
+      document.getElementById("storageFill").style.width = percent + "%";
+    }
+
+    function fileCard(file) {
+      return `
+        <div class="file-item">
+          <div class="file-icon">${file.icon}</div>
+          <div>
+            <div class="file-name">${file.name}</div>
+            <div class="small-muted">${file.size} • updated ${file.updated}</div>
+            <div>
+              <span class="tag">${file.type}</span>
+            </div>
+          </div>
+          <div class="file-actions">
+            <button onclick="downloadFile(${file.id})">Download</button>
+            <button onclick="deleteFile(${file.id})">Delete</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function activityCard(item) {
+      return `
+        <div class="activity-item">
+          <div>${item.text}</div>
+          <div class="activity-time">${item.time}</div>
+        </div>
+      `;
+    }
+
+    function renderFiles() {
+      const text = (fileSearch.value || globalSearch.value || "").toLowerCase();
+      const type = fileTypeFilter.value;
+
+      const filtered = files.filter(file => {
+        const matchesText =
+          file.name.toLowerCase().includes(text) ||
+          file.type.toLowerCase().includes(text);
+
+        const matchesType = type === "all" || file.type === type;
+
+        return matchesText && matchesType;
+      });
+
+      dashboardFilesList.innerHTML = filtered.slice(0, 3).map(fileCard).join("") || `<div class="small-muted">No files found.</div>`;
+      fullFilesList.innerHTML = filtered.map(fileCard).join("") || `<div class="small-muted">No files found.</div>`;
+      document.getElementById("metricFiles").textContent = files.length;
+    }
+
+    function renderActivity() {
+      dashboardActivityList.innerHTML = activity.slice(0, 4).map(activityCard).join("") || `<div class="small-muted">No activity yet.</div>`;
+      fullActivityList.innerHTML = activity.map(activityCard).join("") || `<div class="small-muted">No activity yet.</div>`;
+    }
+
+    function addActivity(text, time = "just now") {
+      activity.unshift({ text, time });
+      renderActivity();
+    }
+
+    function toggleServer() {
+      serverOnline = !serverOnline;
+
+      document.getElementById("serverStatusText").textContent = serverOnline ? "Online" : "Offline";
+      document.getElementById("serverSubtext").textContent = serverOnline
+        ? "Raspberry Pi connected"
+        : "Server connection lost";
+
+      document.getElementById("statusMain").textContent = serverOnline ? "Healthy" : "Offline";
+
+      addActivity(serverOnline ? "Server brought online" : "Server shut down");
+    }
+
+    function addSampleFile() {
+      const id = Date.now();
+      const sample = {
+        id,
+        name: "new_upload_" + id + ".txt",
+        type: "Document",
+        size: "24 KB",
+        updated: "just now",
+        icon: "📄"
+      };
+
+      files.unshift(sample);
+      usedStorageGb += 1;
+      renderFiles();
+      renderStorage();
+      addActivity(`Uploaded ${sample.name}`);
+    }
+
+    function downloadFile(id) {
+      const file = files.find(f => f.id === id);
+      if (!file) return;
+      addActivity(`Downloaded ${file.name}`);
+      alert("Pretend download started for: " + file.name);
+    }
+
+    function deleteFile(id) {
+      const index = files.findIndex(f => f.id === id);
+      if (index === -1) return;
+
+      const removed = files.splice(index, 1)[0];
+      usedStorageGb = Math.max(0, usedStorageGb - 1);
+      renderFiles();
+      renderStorage();
+      addActivity(`Deleted ${removed.name}`);
+    }
+
+    function clearActivity() {
+      activity = [];
+      renderActivity();
+    }
+
+    navButtons.forEach(btn => {
+      btn.addEventListener("click", () => switchView(btn.dataset.view));
+    });
+
+    document.getElementById("openFilesViewBtn").addEventListener("click", () => switchView("files"));
+    document.getElementById("toggleServerBtn").addEventListener("click", toggleServer);
+    document.getElementById("addSampleFileBtn").addEventListener("click", addSampleFile);
+    document.getElementById("uploadBtn").addEventListener("click", addSampleFile);
+    document.getElementById("quickUploadBtn").addEventListener("click", addSampleFile);
+    document.getElementById("heroUploadBtn").addEventListener("click", addSampleFile);
+    document.getElementById("clearActivityBtn").addEventListener("click", clearActivity);
+
+    document.getElementById("saveSettingsBtn").addEventListener("click", () => {
+      const name = document.getElementById("serverName").value.trim();
+      const ip = document.getElementById("serverIp").value.trim();
+      addActivity(`Saved settings for ${name} (${ip})`);
+      alert("Settings saved.");
+    });
+
+    fileSearch.addEventListener("input", renderFiles);
+    fileTypeFilter.addEventListener("change", renderFiles);
+    globalSearch.addEventListener("input", () => {
+      renderFiles();
+      renderActivity();
+    });
+
+    renderStorage();
+    renderFiles();
+    renderActivity();
+
+    window.downloadFile = downloadFile;
+    window.deleteFile = deleteFile;
+  </script>
+</body>
+</html>
