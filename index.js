@@ -43,6 +43,10 @@ function renderStorage() {
   document.getElementById("storageFill").style.width = percent + "%";
 }
 
+const loginBtn = document.getElementById("loginBtn");
+
+
+
 function fileCard(file) {
   return `
     <div class="file-item">

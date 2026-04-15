@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cloud 9 Login</title>
+  <style>
+    :root {
+      --bg: #081120;
+      --bg2: #0d1830;
+      --panel: rgba(16, 24, 45, 0.92);
+      --border: rgba(255,255,255,0.08);
+      --text: #eef4ff;
+      --muted: #aab8d8;
+      --accent: #74a7ff;
+      --accent2: #88ffd7;
+      --danger: #ff7d8d;
+      --radius: 24px;
+      --shadow: 0 20px 50px rgba(0,0,0,0.35);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: Inter, Arial, sans-serif;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(116,167,255,0.18), transparent 30%),
+        radial-gradient(circle at top right, rgba(136,255,215,0.14), transparent 26%),
+        linear-gradient(180deg, var(--bg) 0%, #050b15 100%);
+      padding: 20px;
+    }
+
+    .login-card {
+      width: 100%;
+      max-width: 420px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      border-radius: var(--radius);
+      padding: 30px 26px;
+      backdrop-filter: blur(14px);
+    }
+
+    .logo {
+      width: 64px;
+      height: 64px;
+      border-radius: 20px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #07111d;
+      display: grid;
+      place-items: center;
+      font-size: 1.5rem;
+      font-weight: 800;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      font-size: 1.8rem;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+
+    input {
+      width: 100%;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.05);
+      color: var(--text);
+      padding: 14px;
+      border-radius: 14px;
+      font: inherit;
+      transition: 0.2s ease;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: rgba(116,167,255,0.45);
+      box-shadow: 0 8px 25px rgba(116,167,255,0.12);
+    }
+
+    .options {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin: 10px 0 18px;
+      font-size: 0.92rem;
+      color: var(--muted);
+      flex-wrap: wrap;
+    }
+
+    .remember {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .remember input {
+      width: auto;
+    }
+
+    button {
+      width: 100%;
+      border: none;
+      padding: 14px;
+      border-radius: 14px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      color: #07111d;
+      background: linear-gradient(135deg, var(--accent), #9bc2ff);
+      transition: 0.2s ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 24px rgba(116,167,255,0.18);
+    }
+
+    .message {
+      margin-top: 16px;
+      font-size: 0.92rem;
+      min-height: 20px;
+      color: var(--muted);
+    }
+
+    .message.error {
+      color: var(--danger);
+    }
+
+    .message.success {
+      color: #88ffd7;
+    }
+
+    .footer {
+      margin-top: 20px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    a {
+      color: var(--accent2);
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <div class="logo">C9</div>
+    <h1>Cloud 9 Login</h1>
+    <p class="subtitle">sign in to access your raspberry pi cloud dashboard</p>
+
+    <form id="loginForm">
+      <div class="form-group">
+        <label for="username">username</label>
+        <input type="text" id="username" placeholder="enter your username" required />
+      </div>
+
+      <div class="form-group">
+        <label for="password">password</label>
+        <input type="password" id="password" placeholder="enter your password" required />
+      </div>
+
+      <div class="options">
+        <label class="remember">
+          <input type="checkbox" id="rememberMe" />
+          remember me
+        </label>
+        <a href="#">forgot password?</a>
+      </div>
+
+      <button type="submit">log in</button>
+      <div id="message" class="message"></div>
+    </form>
+
+    <div class="footer">
+      cloud 9 secure access
+    </div>
+  </div>
+
+  <script>
+    const loginForm = document.getElementById("loginForm");
+    const message = document.getElementById("message");
+
+    loginForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const username = document.getElementById("username").value.trim();
+      const password = document.getElementById("password").value.trim();
+      const rememberMe = document.getElementById("rememberMe").checked;
+
+      message.textContent = "checking login...";
+      message.className = "message";
+
+      try {
+        // temp frontend-only demo login
+        if (username === "admin" && password === "cloud9") {
+          if (rememberMe) {
+            localStorage.setItem("cloud9_user", username);
+          } else {
+            localStorage.removeItem("cloud9_user");
+          }
+
+          message.textContent = "login successful. redirecting...";
+          message.className = "message success";
+
+          setTimeout(() => {
+            window.location.href = "index.html";
+          }, 1000);
+        } else {
+          message.textContent = "invalid username or password";
+          message.className = "message error";
+        }
+      } catch (err) {
+        message.textContent = "something went wrong";
+        message.className = "message error";
+      }
+    });
+
+    window.addEventListener("load", () => {
+      const savedUser = localStorage.getItem("cloud9_user");
+      if (savedUser) {
+        document.getElementById("username").value = savedUser;
+        document.getElementById("rememberMe").checked = true;
+      }
+    });
+  </script>
+</body>
+</html>
