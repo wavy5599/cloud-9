@@ -297,3 +297,49 @@ window.deleteFile = deleteFile;
     await loadFiles();
   }
 })();
+
+const loginForm = document.getElementById("loginForm");
+    const message = document.getElementById("message");
+
+    loginForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const username = document.getElementById("username").value.trim();
+      const password = document.getElementById("password").value.trim();
+      const rememberMe = document.getElementById("rememberMe").checked;
+
+      message.textContent = "checking login...";
+      message.className = "message";
+
+      try {
+        // temp frontend-only demo login
+        if (username === "admin" && password === "cloud9") {
+          if (rememberMe) {
+            localStorage.setItem("cloud9_user", username);
+          } else {
+            localStorage.removeItem("cloud9_user");
+          }
+
+          message.textContent = "login successful. redirecting...";
+          message.className = "message success";
+
+          setTimeout(() => {
+            window.location.href = "index.html";
+          }, 1000);
+        } else {
+          message.textContent = "invalid username or password";
+          message.className = "message error";
+        }
+      } catch (err) {
+        message.textContent = "something went wrong";
+        message.className = "message error";
+      }
+    });
+
+    window.addEventListener("load", () => {
+      const savedUser = localStorage.getItem("cloud9_user");
+      if (savedUser) {
+        document.getElementById("username").value = savedUser;
+        document.getElementById("rememberMe").checked = true;
+      }
+    });
