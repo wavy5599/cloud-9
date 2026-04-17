@@ -1,9 +1,19 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, redirect
+from flask_cors import CORS
 from pathlib import Path
-import os
 import shutil
 
 app = Flask(__name__)
+
+# allow requests from your github pages frontend
+CORS(
+    app,
+    resources={
+        r"/api/*": {
+            "origins": ["https://wavy5599.github.io"]
+        }
+    }
+)
 
 # change this to whatever folder you want exposed
 BASE_DIR = Path.home() / "cloud9_storage"
@@ -30,6 +40,11 @@ def file_info(path: Path) -> dict:
     }
 
 
+@app.route("/", methods=["GET"])
+def home():
+    return redirect("https://wavy5599.github.io/cloud-9/")
+
+
 @app.route("/api/health", methods=["GET"])
 def health():
     return jsonify({
@@ -51,7 +66,10 @@ def list_files():
     if not current.is_dir():
         return jsonify({"error": "path is not a directory"}), 400
 
-    items = [file_info(item) for item in sorted(current.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))]
+    items = [
+        file_info(item)
+        for item in sorted(current.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
+    ]
 
     return jsonify({
         "current_path": str(current.relative_to(BASE_DIR)),
