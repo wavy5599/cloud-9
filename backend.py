@@ -17,7 +17,7 @@ CORS(
         r"/api/*": {
             "origins": [
                 "https://wavy5599.github.io",
-                "https://wavy5599.github.io/cloud-9"
+                "https://wavy5599.github.io/cloud-9",
             ]
         }
     }
@@ -27,6 +27,7 @@ CORS(
 API_USERNAME = "admin"
 API_PASSWORD = "1234"
 
+# storage folder
 BASE_DIR = Path.home() / "cloud9_storage"
 BASE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -40,6 +41,30 @@ def get_local_ip():
         return ip
     except Exception:
         return "127.0.0.1"
+
+
+def get_pi_temp():
+    # method 1: vcgencmd
+    try:
+        output = subprocess.check_output(
+            ["vcgencmd", "measure_temp"],
+            stderr=subprocess.DEVNULL
+        ).decode().strip()
+
+        return output.replace("temp=", "").replace("'C", "").strip()
+    except Exception:
+        pass
+
+    # method 2: linux thermal file
+    try:
+        thermal_file = Path("/sys/class/thermal/thermal_zone0/temp")
+        if thermal_file.exists():
+            raw = thermal_file.read_text().strip()
+            return str(round(int(raw) / 1000, 1))
+    except Exception:
+        pass
+
+    return None
 
 
 def safe_path(relative_path: str = "") -> Path:
@@ -88,8 +113,8 @@ def home():
 @app.route("/api/login", methods=["POST"])
 def login():
     data = request.get_json(silent=True) or {}
-    username = data.get("username", "")
-    password = data.get("password", "")
+    username = data.get("username", "").strip()
+    password = data.get("password", "").strip()
 
     if check_auth(username, password):
         return jsonify({
@@ -108,8 +133,8 @@ def login():
 def health():
     return jsonify({
         "status": "ok",
-        "base_dir": str(BASE_DIR),
-        "authenticated": True
+        "authenticated": True,
+        "base_dir": str(BASE_DIR)
     })
 
 
@@ -119,8 +144,7 @@ def status():
     return jsonify({
         "online": True,
         "device_name": platform.node(),
-        "system": platform.system(),
-        "release": platform.release(),
+        "system": f"{platform.system()} {platform.release()}",
         "pi_ip": get_local_ip(),
         "storage_path": str(BASE_DIR)
     })
@@ -129,19 +153,13 @@ def status():
 @app.route("/api/pi-info", methods=["GET"])
 @require_auth
 def pi_info():
-    temp_c = None
-    try:
-        output = subprocess.check_output(["vcgencmd", "measure_temp"]).decode().strip()
-        temp_c = output.replace("temp=", "").replace("'C", "")
-    except Exception:
-        temp_c = None
+    temp_c = get_pi_temp()
 
     return jsonify({
         "hostname": platform.node(),
         "ip": get_local_ip(),
-        "temperature_c": temp_c,
-        "system": platform.system(),
-        "release": platform.release(),
+        "temperature_c": f"{temp_c} °C" if temp_c is not None else "unavailable",
+        "system": f"{platform.system()} {platform.release()}",
         "storage_path": str(BASE_DIR)
     })
 
@@ -281,4 +299,8 @@ def delete_item():
 
 
 if __name__ == "__main__":
+    print("cloud 9 backend starting...")
+    print(f"login username: {API_USERNAME}")
+    print(f"storage path: {BASE_DIR}")
+    print(f"local ip: {get_local_ip()}")
     app.run(host="0.0.0.0", port=5000, debug=True)
