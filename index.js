@@ -1,4 +1,9 @@
-const SERVER_URL = "http://192.168.0.11:5000";
+const savedServerUrl =
+  localStorage.getItem("cloud9_serverUrl") ||
+  sessionStorage.getItem("cloud9_serverUrl") ||
+  "http://192.168.0.11:5000";
+
+let SERVER_URL = savedServerUrl.replace(/\/$/, "");
 
 let files = [];
 let activity = [];
@@ -6,340 +11,506 @@ let serverOnline = false;
 let usedStorageGb = 0;
 const totalStorageGb = 500;
 
-const views = {
-  dashboard: document.getElementById("view-dashboard"),
-  files: document.getElementById("view-files"),
-  activity: document.getElementById("view-activity"),
-  settings: document.getElementById("view-settings")
-};
+function normalizeBaseUrl(url) {
+  return (url || "").replace(/\/$/, "");
+}
 
-const navButtons = document.querySelectorAll(".nav-btn");
-const dashboardFilesList = document.getElementById("dashboardFilesList");
-const fullFilesList = document.getElementById("fullFilesList");
-const dashboardActivityList = document.getElementById("dashboardActivityList");
-const fullActivityList = document.getElementById("fullActivityList");
-const fileSearch = document.getElementById("fileSearch");
-const fileTypeFilter = document.getElementById("fileTypeFilter");
-const globalSearch = document.getElementById("globalSearch");
+function getAuthHeader() {
+  const username =
+    localStorage.getItem("cloud9_username") ||
+    sessionStorage.getItem("cloud9_username") ||
+    "";
 
-function switchView(viewName) {
-  Object.entries(views).forEach(([name, section]) => {
-    section.classList.toggle("hidden", name !== viewName);
+  const password =
+    localStorage.getItem("cloud9_password") ||
+    sessionStorage.getItem("cloud9_password") ||
+    "";
+
+  if (!username && !password) return null;
+  return "Basic " + btoa(`${username}:${password}`);
+}
+
+function addAuthHeaders(headers = {}) {
+  const auth = getAuthHeader();
+  if (auth) {
+    headers["Authorization"] = auth;
+  }
+  return headers;
+}
+
+/* ---------------- LOGIN PAGE ---------------- */
+
+(function initLoginPage() {
+  const loginForm = document.getElementById("loginForm");
+  const message = document.getElementById("message");
+
+  if (!loginForm || !message) return;
+
+  window.addEventListener("load", () => {
+    const serverUrlField = document.getElementById("serverUrl");
+    const usernameField = document.getElementById("username");
+    const passwordField = document.getElementById("password");
+    const rememberMeField = document.getElementById("rememberMe");
+
+    const savedUrl =
+      localStorage.getItem("cloud9_serverUrl") ||
+      sessionStorage.getItem("cloud9_serverUrl") ||
+      "";
+
+    const savedUsername =
+      localStorage.getItem("cloud9_username") ||
+      sessionStorage.getItem("cloud9_username") ||
+      "";
+
+    const savedPassword =
+      localStorage.getItem("cloud9_password") ||
+      sessionStorage.getItem("cloud9_password") ||
+      "";
+
+    if (serverUrlField && savedUrl) serverUrlField.value = savedUrl;
+    if (usernameField && savedUsername) usernameField.value = savedUsername;
+    if (passwordField && savedPassword) passwordField.value = savedPassword;
+    if (rememberMeField && localStorage.getItem("cloud9_username")) {
+      rememberMeField.checked = true;
+    }
   });
 
-  navButtons.forEach(btn => {
-    btn.classList.toggle("active", btn.dataset.view === viewName);
+  loginForm.addEventListener("submit", async function (e) {
+    e.preventDefault();
+
+    const serverUrlField = document.getElementById("serverUrl");
+    const usernameField = document.getElementById("username");
+    const passwordField = document.getElementById("password");
+    const rememberMeField = document.getElementById("rememberMe");
+
+    const serverUrl = normalizeBaseUrl(serverUrlField ? serverUrlField.value.trim() : SERVER_URL);
+    const username = usernameField ? usernameField.value.trim() : "";
+    const password = passwordField ? passwordField.value : "";
+    const rememberMe = rememberMeField ? rememberMeField.checked : false;
+
+    message.textContent = "checking login...";
+    message.className = "message";
+    message.style.color = "#9fb0e0";
+
+    try {
+      const auth = "Basic " + btoa(`${username}:${password}`);
+
+      const res = await fetch(`${serverUrl}/api/health`, {
+        method: "GET",
+        headers: {
+          "Authorization": auth
+        }
+      });
+
+      if (!res.ok) {
+        throw new Error("invalid login or backend not reachable");
+      }
+
+      if (rememberMe) {
+        localStorage.setItem("cloud9_serverUrl", serverUrl);
+        localStorage.setItem("cloud9_username", username);
+        localStorage.setItem("cloud9_password", password);
+
+        sessionStorage.removeItem("cloud9_serverUrl");
+        sessionStorage.removeItem("cloud9_username");
+        sessionStorage.removeItem("cloud9_password");
+      } else {
+        sessionStorage.setItem("cloud9_serverUrl", serverUrl);
+        sessionStorage.setItem("cloud9_username", username);
+        sessionStorage.setItem("cloud9_password", password);
+
+        localStorage.removeItem("cloud9_serverUrl");
+        localStorage.removeItem("cloud9_username");
+        localStorage.removeItem("cloud9_password");
+      }
+
+      message.textContent = "login successful. redirecting...";
+      message.className = "message success";
+      message.style.color = "#3ddc97";
+
+      setTimeout(() => {
+        window.location.href = "dashboard.html";
+      }, 700);
+    } catch (error) {
+      message.textContent = error.message || "something went wrong";
+      message.className = "message error";
+      message.style.color = "#ff6b6b";
+    }
   });
-}
-
-function renderStorage() {
-  const percent = totalStorageGb > 0
-    ? Math.round((usedStorageGb / totalStorageGb) * 100)
-    : 0;
-
-  document.getElementById("storagePercentLabel").textContent = percent + "%";
-  document.getElementById("usedStorage").textContent = usedStorageGb + " GB";
-  document.getElementById("totalStorage").textContent = totalStorageGb + " GB";
-  document.getElementById("storageFill").style.width = percent + "%";
-}
-
-const loginBtn = document.getElementById("loginBtn");
-
-
-
-function fileCard(file) {
-  return `
-    <div class="file-item">
-      <div class="file-icon">${file.icon || "📄"}</div>
-      <div>
-        <div class="file-name">${file.name}</div>
-        <div class="small-muted">${file.size || "unknown"} • updated ${file.updated || "recently"}</div>
-        <div>
-          <span class="tag">${file.type || "File"}</span>
-        </div>
-      </div>
-      <div class="file-actions">
-        <button onclick="downloadFile('${file.path}')">Download</button>
-        <button onclick="deleteFile('${file.path}')">Delete</button>
-      </div>
-    </div>
-  `;
-}
-
-function activityCard(item) {
-  return `
-    <div class="activity-item">
-      <div>${item.text}</div>
-      <div class="activity-time">${item.time}</div>
-    </div>
-  `;
-}
-
-function renderFiles() {
-  const text = (fileSearch.value || globalSearch.value || "").toLowerCase();
-  const type = fileTypeFilter.value;
-
-  const filtered = files.filter(file => {
-    const matchesText =
-      file.name.toLowerCase().includes(text) ||
-      (file.type || "").toLowerCase().includes(text);
-
-    const matchesType = type === "all" || file.type === type;
-
-    return matchesText && matchesType;
-  });
-
-  dashboardFilesList.innerHTML =
-    filtered.slice(0, 3).map(fileCard).join("") ||
-    `<div class="small-muted">No files found.</div>`;
-
-  fullFilesList.innerHTML =
-    filtered.map(fileCard).join("") ||
-    `<div class="small-muted">No files found.</div>`;
-
-  document.getElementById("metricFiles").textContent = files.length;
-}
-
-function renderActivity() {
-  dashboardActivityList.innerHTML =
-    activity.slice(0, 4).map(activityCard).join("") ||
-    `<div class="small-muted">No activity yet.</div>`;
-
-  fullActivityList.innerHTML =
-    activity.map(activityCard).join("") ||
-    `<div class="small-muted">No activity yet.</div>`;
-}
-
-function addActivity(text, time = "just now") {
-  activity.unshift({ text, time });
-  renderActivity();
-}
-
-function formatBytes(bytes) {
-  if (bytes == null) return "unknown";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
-
-function guessType(name, isDir = false) {
-  if (isDir) return "Folder";
-  const ext = name.split(".").pop().toLowerCase();
-
-  if (["png", "jpg", "jpeg", "gif", "webp"].includes(ext)) return "Image";
-  if (["mp4", "mov", "mkv", "webm"].includes(ext)) return "Video";
-  if (["js", "py", "html", "css", "json", "java", "cpp"].includes(ext)) return "Code";
-  if (["pdf", "doc", "docx", "txt", "md", "pptx"].includes(ext)) return "Document";
-  if (["zip", "tar", "gz"].includes(ext)) return "Archive";
-
-  return "File";
-}
-
-function guessIcon(type) {
-  if (type === "Folder") return "📁";
-  if (type === "Image") return "🖼️";
-  if (type === "Video") return "🎥";
-  if (type === "Code") return "🧠";
-  if (type === "Archive") return "💾";
-  return "📄";
-}
-
-async function checkServer() {
-  try {
-    const res = await fetch(`${SERVER_URL}/api/health`);
-    if (!res.ok) throw new Error("health check failed");
-
-    const data = await res.json();
-    serverOnline = true;
-
-    document.getElementById("serverStatusText").textContent = "Online";
-    document.getElementById("serverSubtext").textContent = data.base_dir || "Raspberry Pi connected";
-    document.getElementById("statusMain").textContent = "Healthy";
-
-    addActivity("Connected to Raspberry Pi server");
-    return true;
-  } catch (err) {
-    serverOnline = false;
-
-    document.getElementById("serverStatusText").textContent = "Offline";
-    document.getElementById("serverSubtext").textContent = "Could not reach Pi server";
-    document.getElementById("statusMain").textContent = "Offline";
-
-    addActivity("Could not connect to Raspberry Pi server");
-    return false;
-  }
-}
-
-async function loadFiles(path = "") {
-  try {
-    const res = await fetch(`${SERVER_URL}/api/list?path=${encodeURIComponent(path)}`);
-    if (!res.ok) throw new Error("list failed");
-
-    const data = await res.json();
-
-    files = data.items.map(item => {
-      const type = guessType(item.name, item.is_dir);
-      return {
-        id: item.path,
-        path: item.path,
-        name: item.name,
-        type,
-        size: item.is_dir ? "Folder" : formatBytes(item.size),
-        updated: "live",
-        icon: guessIcon(type)
-      };
-    });
-
-    usedStorageGb = Math.min(totalStorageGb, Math.round(files.length * 2));
-    renderFiles();
-    renderStorage();
-    addActivity(`Loaded ${files.length} items from server`);
-  } catch (err) {
-    files = [];
-    renderFiles();
-    addActivity("Failed to load files from server");
-  }
-}
-
-async function downloadFile(path) {
-  try {
-    window.open(`${SERVER_URL}/api/download?path=${encodeURIComponent(path)}`, "_blank");
-    addActivity(`Started download for ${path}`);
-  } catch (err) {
-    addActivity(`Download failed for ${path}`);
-  }
-}
-
-async function deleteFile(path) {
-  try {
-    const res = await fetch(`${SERVER_URL}/api/delete`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path })
-    });
-
-    if (!res.ok) throw new Error("delete failed");
-
-    addActivity(`Deleted ${path}`);
-    await loadFiles();
-  } catch (err) {
-    addActivity(`Delete failed for ${path}`);
-  }
-}
-
-async function uploadSampleFile() {
-  const blob = new Blob(["hello from cloud 9"], { type: "text/plain" });
-  const formData = new FormData();
-  formData.append("path", "");
-  formData.append("file", blob, `sample_${Date.now()}.txt`);
-
-  try {
-    const res = await fetch(`${SERVER_URL}/api/upload`, {
-      method: "POST",
-      body: formData
-    });
-
-    if (!res.ok) throw new Error("upload failed");
-
-    addActivity("Uploaded sample file");
-    await loadFiles();
-  } catch (err) {
-    addActivity("Upload failed");
-  }
-}
-
-function clearActivity() {
-  activity = [];
-  renderActivity();
-}
-
-navButtons.forEach(btn => {
-  btn.addEventListener("click", () => switchView(btn.dataset.view));
-});
-
-document.getElementById("openFilesViewBtn").addEventListener("click", () => switchView("files"));
-document.getElementById("addSampleFileBtn").addEventListener("click", uploadSampleFile);
-document.getElementById("uploadBtn").addEventListener("click", uploadSampleFile);
-document.getElementById("quickUploadBtn").addEventListener("click", uploadSampleFile);
-document.getElementById("heroUploadBtn").addEventListener("click", uploadSampleFile);
-document.getElementById("clearActivityBtn").addEventListener("click", clearActivity);
-
-document.getElementById("toggleServerBtn").addEventListener("click", async () => {
-  await checkServer();
-  if (serverOnline) {
-    await loadFiles();
-  }
-});
-
-document.getElementById("saveSettingsBtn").addEventListener("click", async () => {
-  const ip = document.getElementById("serverIp").value.trim();
-  if (ip) {
-    addActivity(`Server IP updated to ${ip}`);
-    alert("You can now change SERVER_URL in your JS to: http://" + ip + ":5000");
-  }
-});
-
-fileSearch.addEventListener("input", renderFiles);
-fileTypeFilter.addEventListener("change", renderFiles);
-globalSearch.addEventListener("input", renderFiles);
-
-renderStorage();
-renderFiles();
-renderActivity();
-
-window.downloadFile = downloadFile;
-window.deleteFile = deleteFile;
-
-(async function init() {
-  const ok = await checkServer();
-  if (ok) {
-    await loadFiles();
-  }
 })();
 
-const loginForm = document.getElementById("loginForm");
-    const message = document.getElementById("message");
+/* ---------------- DASHBOARD PAGE ---------------- */
 
-    loginForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
+(function initDashboardPage() {
+  const dashboardRoot =
+    document.getElementById("view-dashboard") ||
+    document.getElementById("dashboardFilesList") ||
+    document.getElementById("fullFilesList");
 
-      const username = document.getElementById("username").value.trim();
-      const password = document.getElementById("password").value.trim();
-      const rememberMe = document.getElementById("rememberMe").checked;
+  if (!dashboardRoot) return;
 
-      message.textContent = "checking login...";
-      message.className = "message";
+  SERVER_URL = normalizeBaseUrl(
+    localStorage.getItem("cloud9_serverUrl") ||
+    sessionStorage.getItem("cloud9_serverUrl") ||
+    SERVER_URL
+  );
 
-      try {
-        // temp frontend-only demo login
-        if (username === "admin" && password === "cloud9") {
-          if (rememberMe) {
-            localStorage.setItem("cloud9_user", username);
-          } else {
-            localStorage.removeItem("cloud9_user");
-          }
+  const views = {
+    dashboard: document.getElementById("view-dashboard"),
+    files: document.getElementById("view-files"),
+    activity: document.getElementById("view-activity"),
+    settings: document.getElementById("view-settings")
+  };
 
-          message.textContent = "login successful. redirecting...";
-          message.className = "message success";
+  const navButtons = document.querySelectorAll(".nav-btn");
+  const dashboardFilesList = document.getElementById("dashboardFilesList");
+  const fullFilesList = document.getElementById("fullFilesList");
+  const dashboardActivityList = document.getElementById("dashboardActivityList");
+  const fullActivityList = document.getElementById("fullActivityList");
+  const fileSearch = document.getElementById("fileSearch");
+  const fileTypeFilter = document.getElementById("fileTypeFilter");
+  const globalSearch = document.getElementById("globalSearch");
 
-          setTimeout(() => {
-            window.location.href = "index.html";
-          }, 1000);
-        } else {
-          message.textContent = "invalid username or password";
-          message.className = "message error";
-        }
-      } catch (err) {
-        message.textContent = "something went wrong";
-        message.className = "message error";
+  function switchView(viewName) {
+    Object.entries(views).forEach(([name, section]) => {
+      if (section) {
+        section.classList.toggle("hidden", name !== viewName);
       }
     });
 
-    window.addEventListener("load", () => {
-      const savedUser = localStorage.getItem("cloud9_user");
-      if (savedUser) {
-        document.getElementById("username").value = savedUser;
-        document.getElementById("rememberMe").checked = true;
+    navButtons.forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.view === viewName);
+    });
+  }
+
+  function renderStorage() {
+    const percent = totalStorageGb > 0
+      ? Math.round((usedStorageGb / totalStorageGb) * 100)
+      : 0;
+
+    const storagePercentLabel = document.getElementById("storagePercentLabel");
+    const usedStorage = document.getElementById("usedStorage");
+    const totalStorage = document.getElementById("totalStorage");
+    const storageFill = document.getElementById("storageFill");
+
+    if (storagePercentLabel) storagePercentLabel.textContent = percent + "%";
+    if (usedStorage) usedStorage.textContent = usedStorageGb + " GB";
+    if (totalStorage) totalStorage.textContent = totalStorageGb + " GB";
+    if (storageFill) storageFill.style.width = percent + "%";
+  }
+
+  function fileCard(file) {
+    return `
+      <div class="file-item">
+        <div class="file-icon">${file.icon || "📄"}</div>
+        <div>
+          <div class="file-name">${file.name}</div>
+          <div class="small-muted">${file.size || "unknown"} • updated ${file.updated || "recently"}</div>
+          <div>
+            <span class="tag">${file.type || "File"}</span>
+          </div>
+        </div>
+        <div class="file-actions">
+          <button onclick="downloadFile('${file.path}')">Download</button>
+          <button onclick="deleteFile('${file.path}')">Delete</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function activityCard(item) {
+    return `
+      <div class="activity-item">
+        <div>${item.text}</div>
+        <div class="activity-time">${item.time}</div>
+      </div>
+    `;
+  }
+
+  function renderFiles() {
+    const text = ((fileSearch && fileSearch.value) || (globalSearch && globalSearch.value) || "").toLowerCase();
+    const type = fileTypeFilter ? fileTypeFilter.value : "all";
+
+    const filtered = files.filter(file => {
+      const matchesText =
+        file.name.toLowerCase().includes(text) ||
+        (file.type || "").toLowerCase().includes(text);
+
+      const matchesType = type === "all" || file.type === type;
+      return matchesText && matchesType;
+    });
+
+    if (dashboardFilesList) {
+      dashboardFilesList.innerHTML =
+        filtered.slice(0, 3).map(fileCard).join("") ||
+        `<div class="small-muted">No files found.</div>`;
+    }
+
+    if (fullFilesList) {
+      fullFilesList.innerHTML =
+        filtered.map(fileCard).join("") ||
+        `<div class="small-muted">No files found.</div>`;
+    }
+
+    const metricFiles = document.getElementById("metricFiles");
+    if (metricFiles) metricFiles.textContent = files.length;
+  }
+
+  function renderActivity() {
+    if (dashboardActivityList) {
+      dashboardActivityList.innerHTML =
+        activity.slice(0, 4).map(activityCard).join("") ||
+        `<div class="small-muted">No activity yet.</div>`;
+    }
+
+    if (fullActivityList) {
+      fullActivityList.innerHTML =
+        activity.map(activityCard).join("") ||
+        `<div class="small-muted">No activity yet.</div>`;
+    }
+  }
+
+  function addActivity(text, time = "just now") {
+    activity.unshift({ text, time });
+    renderActivity();
+  }
+
+  function formatBytes(bytes) {
+    if (bytes == null) return "unknown";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  }
+
+  function guessType(name, isDir = false) {
+    if (isDir) return "Folder";
+    const parts = name.split(".");
+    const ext = parts.length > 1 ? parts.pop().toLowerCase() : "";
+
+    if (["png", "jpg", "jpeg", "gif", "webp"].includes(ext)) return "Image";
+    if (["mp4", "mov", "mkv", "webm"].includes(ext)) return "Video";
+    if (["js", "py", "html", "css", "json", "java", "cpp"].includes(ext)) return "Code";
+    if (["pdf", "doc", "docx", "txt", "md", "pptx"].includes(ext)) return "Document";
+    if (["zip", "tar", "gz"].includes(ext)) return "Archive";
+
+    return "File";
+  }
+
+  function guessIcon(type) {
+    if (type === "Folder") return "📁";
+    if (type === "Image") return "🖼️";
+    if (type === "Video") return "🎥";
+    if (type === "Code") return "🧠";
+    if (type === "Archive") return "💾";
+    return "📄";
+  }
+
+  async function checkServer() {
+    try {
+      const res = await fetch(`${SERVER_URL}/api/health`, {
+        headers: addAuthHeaders()
+      });
+
+      if (!res.ok) throw new Error("health check failed");
+
+      const data = await res.json();
+      serverOnline = true;
+
+      const serverStatusText = document.getElementById("serverStatusText");
+      const serverSubtext = document.getElementById("serverSubtext");
+      const statusMain = document.getElementById("statusMain");
+
+      if (serverStatusText) serverStatusText.textContent = "Online";
+      if (serverSubtext) serverSubtext.textContent = data.base_dir || "Raspberry Pi connected";
+      if (statusMain) statusMain.textContent = "Healthy";
+
+      addActivity("Connected to Raspberry Pi server");
+      return true;
+    } catch (err) {
+      serverOnline = false;
+
+      const serverStatusText = document.getElementById("serverStatusText");
+      const serverSubtext = document.getElementById("serverSubtext");
+      const statusMain = document.getElementById("statusMain");
+
+      if (serverStatusText) serverStatusText.textContent = "Offline";
+      if (serverSubtext) serverSubtext.textContent = "Could not reach Pi server";
+      if (statusMain) statusMain.textContent = "Offline";
+
+      addActivity("Could not connect to Raspberry Pi server");
+      return false;
+    }
+  }
+
+  async function loadFiles(path = "") {
+    try {
+      const res = await fetch(`${SERVER_URL}/api/files?path=${encodeURIComponent(path)}`, {
+        headers: addAuthHeaders()
+      });
+
+      if (!res.ok) throw new Error("list failed");
+
+      const data = await res.json();
+      const items = Array.isArray(data.items) ? data.items : Array.isArray(data) ? data : [];
+
+      files = items.map(item => {
+        const type = guessType(item.name, item.is_dir);
+        return {
+          id: item.path,
+          path: item.path,
+          name: item.name,
+          type,
+          size: item.is_dir ? "Folder" : formatBytes(item.size),
+          updated: "live",
+          icon: guessIcon(type)
+        };
+      });
+
+      usedStorageGb = Math.min(totalStorageGb, Math.round(files.length * 2));
+      renderFiles();
+      renderStorage();
+      addActivity(`Loaded ${files.length} items from server`);
+    } catch (err) {
+      files = [];
+      renderFiles();
+      addActivity("Failed to load files from server");
+    }
+  }
+
+  async function downloadFile(path) {
+    try {
+      const auth = getAuthHeader();
+      const url = new URL(`${SERVER_URL}/api/download`);
+      url.searchParams.set("path", path);
+
+      const res = await fetch(url.toString(), {
+        headers: auth ? { Authorization: auth } : {}
+      });
+
+      if (!res.ok) throw new Error("download failed");
+
+      const blob = await res.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = path.split("/").pop() || "download";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(blobUrl);
+
+      addActivity(`Started download for ${path}`);
+    } catch (err) {
+      addActivity(`Download failed for ${path}`);
+    }
+  }
+
+  async function deleteFile(path) {
+    try {
+      const res = await fetch(`${SERVER_URL}/api/delete`, {
+        method: "POST",
+        headers: addAuthHeaders({
+          "Content-Type": "application/json"
+        }),
+        body: JSON.stringify({ path })
+      });
+
+      if (!res.ok) throw new Error("delete failed");
+
+      addActivity(`Deleted ${path}`);
+      await loadFiles();
+    } catch (err) {
+      addActivity(`Delete failed for ${path}`);
+    }
+  }
+
+  async function uploadSampleFile() {
+    const blob = new Blob(["hello from cloud 9"], { type: "text/plain" });
+    const formData = new FormData();
+    formData.append("path", "");
+    formData.append("file", blob, `sample_${Date.now()}.txt`);
+
+    try {
+      const res = await fetch(`${SERVER_URL}/api/upload`, {
+        method: "POST",
+        headers: addAuthHeaders(),
+        body: formData
+      });
+
+      if (!res.ok) throw new Error("upload failed");
+
+      addActivity("Uploaded sample file");
+      await loadFiles();
+    } catch (err) {
+      addActivity("Upload failed");
+    }
+  }
+
+  function clearActivity() {
+    activity = [];
+    renderActivity();
+  }
+
+  navButtons.forEach(btn => {
+    btn.addEventListener("click", () => switchView(btn.dataset.view));
+  });
+
+  const openFilesViewBtn = document.getElementById("openFilesViewBtn");
+  const addSampleFileBtn = document.getElementById("addSampleFileBtn");
+  const uploadBtn = document.getElementById("uploadBtn");
+  const quickUploadBtn = document.getElementById("quickUploadBtn");
+  const heroUploadBtn = document.getElementById("heroUploadBtn");
+  const clearActivityBtn = document.getElementById("clearActivityBtn");
+  const toggleServerBtn = document.getElementById("toggleServerBtn");
+  const saveSettingsBtn = document.getElementById("saveSettingsBtn");
+
+  if (openFilesViewBtn) openFilesViewBtn.addEventListener("click", () => switchView("files"));
+  if (addSampleFileBtn) addSampleFileBtn.addEventListener("click", uploadSampleFile);
+  if (uploadBtn) uploadBtn.addEventListener("click", uploadSampleFile);
+  if (quickUploadBtn) quickUploadBtn.addEventListener("click", uploadSampleFile);
+  if (heroUploadBtn) heroUploadBtn.addEventListener("click", uploadSampleFile);
+  if (clearActivityBtn) clearActivityBtn.addEventListener("click", clearActivity);
+
+  if (toggleServerBtn) {
+    toggleServerBtn.addEventListener("click", async () => {
+      await checkServer();
+      if (serverOnline) {
+        await loadFiles();
       }
     });
+  }
+
+  if (saveSettingsBtn) {
+    saveSettingsBtn.addEventListener("click", () => {
+      const serverIp = document.getElementById("serverIp");
+      if (!serverIp) return;
+
+      const ip = serverIp.value.trim();
+      if (ip) {
+        SERVER_URL = `http://${ip}:5000`;
+        localStorage.setItem("cloud9_serverUrl", SERVER_URL);
+        addActivity(`Server IP updated to ${ip}`);
+        alert(`server url saved as ${SERVER_URL}`);
+      }
+    });
+  }
+
+  if (fileSearch) fileSearch.addEventListener("input", renderFiles);
+  if (fileTypeFilter) fileTypeFilter.addEventListener("change", renderFiles);
+  if (globalSearch) globalSearch.addEventListener("input", renderFiles);
+
+  renderStorage();
+  renderFiles();
+  renderActivity();
+
+  window.downloadFile = downloadFile;
+  window.deleteFile = deleteFile;
+
+  (async function init() {
+    const ok = await checkServer();
+    if (ok) {
+      await loadFiles();
+    }
+  })();
+})();

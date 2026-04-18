@@ -2,7 +2,13 @@ from flask import Flask, request, jsonify, send_file, redirect
 from flask_cors import CORS
 from pathlib import Path
 from werkzeug.utils import secure_filename
+from dotenv import load_dotenv
+from functools import wraps
 import shutil
+import os
+import secrets
+
+load_dotenv()
 
 app = Flask(__name__)
 
@@ -15,6 +21,10 @@ CORS(
         }
     }
 )
+
+# auth values from .env
+API_USERNAME = os.getenv("username", "")
+API_PASSWORD = os.getenv("password", "")
 
 # folder the server will expose
 BASE_DIR = Path.home() / "cloud9_storage"
@@ -46,21 +56,49 @@ def file_info(path: Path) -> dict:
     }
 
 
+def check_auth(username: str, password: str) -> bool:
+    if not API_USERNAME or not API_PASSWORD:
+        return False
+
+    username_ok = secrets.compare_digest(username or "", API_USERNAME)
+    password_ok = secrets.compare_digest(password or "", API_PASSWORD)
+    return username_ok and password_ok
+
+
+def unauthorized():
+    return jsonify({"error": "unauthorized"}), 401
+
+
+def require_auth(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        auth = request.authorization
+
+        if not auth or not check_auth(auth.username, auth.password):
+            return unauthorized()
+
+        return fn(*args, **kwargs)
+    return wrapper
+
+
 @app.route("/", methods=["GET"])
 def home():
     return redirect("https://wavy5599.github.io/cloud-9/")
 
 
 @app.route("/api/health", methods=["GET"])
+@require_auth
 def health():
     return jsonify({
         "status": "ok",
-        "base_dir": str(BASE_DIR)
+        "base_dir": str(BASE_DIR),
+        "authenticated": True
     })
 
 
 @app.route("/api/files", methods=["GET"])
 @app.route("/api/list", methods=["GET"])
+@require_auth
 def list_files():
     rel_path = request.args.get("path", "").strip()
 
@@ -91,6 +129,7 @@ def list_files():
 
 
 @app.route("/api/upload", methods=["POST"])
+@require_auth
 def upload_file():
     rel_path = request.form.get("path", "").strip()
     uploaded = request.files.get("file")
@@ -122,6 +161,7 @@ def upload_file():
 
 
 @app.route("/api/download", methods=["GET"])
+@require_auth
 def download_file():
     rel_path = request.args.get("path", "").strip()
 
@@ -137,14 +177,12 @@ def download_file():
 
 
 @app.route("/api/mkdir", methods=["POST"])
+@require_auth
 def make_dir():
     data = request.get_json(silent=True) or {}
     rel_path = data.get("path", "").strip()
     folder_name = data.get("name", "").strip()
 
-    # supports either:
-    # {"path": "parent", "name": "newfolder"}
-    # or {"path": "parent/newfolder"}
     try:
         if folder_name:
             new_dir = safe_path(str(Path(rel_path) / folder_name))
@@ -164,6 +202,7 @@ def make_dir():
 
 
 @app.route("/api/delete", methods=["POST"])
+@require_auth
 def delete_item():
     data = request.get_json(silent=True) or {}
     rel_path = data.get("path", "").strip()
@@ -188,4 +227,7 @@ def delete_item():
 
 
 if __name__ == "__main__":
+    if not API_USERNAME or not API_PASSWORD:
+        raise RuntimeError("missing CLOUD9_USERNAME or CLOUD9_PASSWORD in .env")
+
     app.run(host="0.0.0.0", port=5000, debug=True)
