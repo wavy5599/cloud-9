@@ -2,40 +2,47 @@ from flask import Flask, request, jsonify, send_file, redirect
 from flask_cors import CORS
 from pathlib import Path
 from werkzeug.utils import secure_filename
-from dotenv import load_dotenv
 from functools import wraps
 import shutil
-import os
 import secrets
-
-load_dotenv()
+import socket
+import platform
+import subprocess
 
 app = Flask(__name__)
 
-# allow requests from your github pages frontend
 CORS(
     app,
     resources={
         r"/api/*": {
-            "origins": ["https://wavy5599.github.io"]
+            "origins": [
+                "https://wavy5599.github.io",
+                "https://wavy5599.github.io/cloud-9"
+            ]
         }
     }
 )
 
-# auth values from .env
-API_USERNAME = os.getenv("username", "")
-API_PASSWORD = os.getenv("password", "")
+# hardcoded login for now
+API_USERNAME = "admin"
+API_PASSWORD = "1234"
 
-# folder the server will expose
 BASE_DIR = Path.home() / "cloud9_storage"
 BASE_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def get_local_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+
 def safe_path(relative_path: str = "") -> Path:
-    """
-    Resolve a relative path safely inside BASE_DIR.
-    Prevent path traversal like ../../etc/passwd
-    """
     target = (BASE_DIR / relative_path).resolve()
     if BASE_DIR.resolve() not in [target, *target.parents]:
         raise ValueError("invalid path")
@@ -43,9 +50,6 @@ def safe_path(relative_path: str = "") -> Path:
 
 
 def file_info(path: Path) -> dict:
-    """
-    Return file/folder metadata for the frontend
-    """
     stat = path.stat()
     return {
         "name": path.name,
@@ -57,9 +61,6 @@ def file_info(path: Path) -> dict:
 
 
 def check_auth(username: str, password: str) -> bool:
-    if not API_USERNAME or not API_PASSWORD:
-        return False
-
     username_ok = secrets.compare_digest(username or "", API_USERNAME)
     password_ok = secrets.compare_digest(password or "", API_PASSWORD)
     return username_ok and password_ok
@@ -73,10 +74,8 @@ def require_auth(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
         auth = request.authorization
-
         if not auth or not check_auth(auth.username, auth.password):
             return unauthorized()
-
         return fn(*args, **kwargs)
     return wrapper
 
@@ -86,6 +85,24 @@ def home():
     return redirect("https://wavy5599.github.io/cloud-9/")
 
 
+@app.route("/api/login", methods=["POST"])
+def login():
+    data = request.get_json(silent=True) or {}
+    username = data.get("username", "")
+    password = data.get("password", "")
+
+    if check_auth(username, password):
+        return jsonify({
+            "success": True,
+            "message": "login successful"
+        })
+
+    return jsonify({
+        "success": False,
+        "message": "invalid username or password"
+    }), 401
+
+
 @app.route("/api/health", methods=["GET"])
 @require_auth
 def health():
@@ -93,6 +110,39 @@ def health():
         "status": "ok",
         "base_dir": str(BASE_DIR),
         "authenticated": True
+    })
+
+
+@app.route("/api/status", methods=["GET"])
+@require_auth
+def status():
+    return jsonify({
+        "online": True,
+        "device_name": platform.node(),
+        "system": platform.system(),
+        "release": platform.release(),
+        "pi_ip": get_local_ip(),
+        "storage_path": str(BASE_DIR)
+    })
+
+
+@app.route("/api/pi-info", methods=["GET"])
+@require_auth
+def pi_info():
+    temp_c = None
+    try:
+        output = subprocess.check_output(["vcgencmd", "measure_temp"]).decode().strip()
+        temp_c = output.replace("temp=", "").replace("'C", "")
+    except Exception:
+        temp_c = None
+
+    return jsonify({
+        "hostname": platform.node(),
+        "ip": get_local_ip(),
+        "temperature_c": temp_c,
+        "system": platform.system(),
+        "release": platform.release(),
+        "storage_path": str(BASE_DIR)
     })
 
 
@@ -145,7 +195,11 @@ def upload_file():
     except ValueError:
         return jsonify({"error": "invalid path"}), 400
 
-    target_dir.mkdir(parents=True, exist_ok=True)
+    if not target_dir.exists():
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+    if not target_dir.is_dir():
+        return jsonify({"error": "target path is not a folder"}), 400
 
     filename = secure_filename(uploaded.filename)
     if not filename:
@@ -227,7 +281,4 @@ def delete_item():
 
 
 if __name__ == "__main__":
-    if not API_USERNAME or not API_PASSWORD:
-        raise RuntimeError("missing CLOUD9_USERNAME or CLOUD9_PASSWORD in .env")
-
     app.run(host="0.0.0.0", port=5000, debug=True)
