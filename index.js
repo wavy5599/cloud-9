@@ -3,7 +3,7 @@ const savedServerUrl =
   sessionStorage.getItem("cloud9_serverUrl") ||
   "http://192.168.0.11:5000";
 
-let SERVER_URL = savedServerUrl.replace(/\/$/, "");
+let SERVER_URL = normalizeBaseUrl(savedServerUrl);
 
 let files = [];
 let activity = [];
@@ -12,19 +12,51 @@ let usedStorageGb = 0;
 const totalStorageGb = 500;
 
 function normalizeBaseUrl(url) {
-  return (url || "").replace(/\/$/, "");
+  return (url || "").trim().replace(/\/+$/, "");
+}
+
+function isHttpsPage() {
+  return window.location.protocol === "https:";
+}
+
+function isHttpApi(url) {
+  return /^http:\/\//i.test(url);
+}
+
+function explainNetworkError(serverUrl, err) {
+  if (isHttpsPage() && isHttpApi(serverUrl)) {
+    return "blocked: github pages is https but your backend is http. use a public https backend or open the site locally on the same network.";
+  }
+
+  if (err && err.message) {
+    return `load failed: ${err.message}`;
+  }
+
+  return "backend not reachable";
+}
+
+function getStoredValue(key) {
+  return localStorage.getItem(key) || sessionStorage.getItem(key) || "";
+}
+
+function setStoredValue(key, value, remember) {
+  if (remember) {
+    localStorage.setItem(key, value);
+    sessionStorage.removeItem(key);
+  } else {
+    sessionStorage.setItem(key, value);
+    localStorage.removeItem(key);
+  }
+}
+
+function clearStoredValue(key) {
+  localStorage.removeItem(key);
+  sessionStorage.removeItem(key);
 }
 
 function getAuthHeader() {
-  const username =
-    localStorage.getItem("cloud9_username") ||
-    sessionStorage.getItem("cloud9_username") ||
-    "";
-
-  const password =
-    localStorage.getItem("cloud9_password") ||
-    sessionStorage.getItem("cloud9_password") ||
-    "";
+  const username = getStoredValue("cloud9_username");
+  const password = getStoredValue("cloud9_password");
 
   if (!username && !password) return null;
   return "Basic " + btoa(`${username}:${password}`);
@@ -32,10 +64,17 @@ function getAuthHeader() {
 
 function addAuthHeaders(headers = {}) {
   const auth = getAuthHeader();
-  if (auth) {
-    headers["Authorization"] = auth;
-  }
+  if (auth) headers["Authorization"] = auth;
   return headers;
+}
+
+async function safeJson(res) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw: text };
+  }
 }
 
 /* ---------------- LOGIN PAGE ---------------- */
@@ -52,20 +91,9 @@ function addAuthHeaders(headers = {}) {
     const passwordField = document.getElementById("password");
     const rememberMeField = document.getElementById("rememberMe");
 
-    const savedUrl =
-      localStorage.getItem("cloud9_serverUrl") ||
-      sessionStorage.getItem("cloud9_serverUrl") ||
-      "";
-
-    const savedUsername =
-      localStorage.getItem("cloud9_username") ||
-      sessionStorage.getItem("cloud9_username") ||
-      "";
-
-    const savedPassword =
-      localStorage.getItem("cloud9_password") ||
-      sessionStorage.getItem("cloud9_password") ||
-      "";
+    const savedUrl = getStoredValue("cloud9_serverUrl");
+    const savedUsername = getStoredValue("cloud9_username");
+    const savedPassword = getStoredValue("cloud9_password");
 
     if (serverUrlField && savedUrl) serverUrlField.value = savedUrl;
     if (usernameField && savedUsername) usernameField.value = savedUsername;
@@ -75,7 +103,7 @@ function addAuthHeaders(headers = {}) {
     }
   });
 
-  loginForm.addEventListener("submit", async function (e) {
+  loginForm.addEventListener("submit", async (e) => {
     e.preventDefault();
 
     const serverUrlField = document.getElementById("serverUrl");
@@ -83,7 +111,9 @@ function addAuthHeaders(headers = {}) {
     const passwordField = document.getElementById("password");
     const rememberMeField = document.getElementById("rememberMe");
 
-    const serverUrl = normalizeBaseUrl(serverUrlField ? serverUrlField.value.trim() : SERVER_URL);
+    const serverUrl = normalizeBaseUrl(
+      serverUrlField ? serverUrlField.value : SERVER_URL
+    );
     const username = usernameField ? usernameField.value.trim() : "";
     const password = passwordField ? passwordField.value : "";
     const rememberMe = rememberMeField ? rememberMeField.checked : false;
@@ -92,37 +122,48 @@ function addAuthHeaders(headers = {}) {
     message.className = "message";
     message.style.color = "#9fb0e0";
 
-    try {
-      const auth = "Basic " + btoa(`${username}:${password}`);
+    if (!serverUrl) {
+      message.textContent = "enter a backend url";
+      message.className = "message error";
+      message.style.color = "#ff6b6b";
+      return;
+    }
 
-      const res = await fetch(`${serverUrl}/api/health`, {
-        method: "GET",
+    if (!username || !password) {
+      message.textContent = "enter username and password";
+      message.className = "message error";
+      message.style.color = "#ff6b6b";
+      return;
+    }
+
+    if (isHttpsPage() && isHttpApi(serverUrl)) {
+      message.textContent =
+        "this page is https but your backend is http. iphone/safari will usually block that.";
+      message.className = "message error";
+      message.style.color = "#ff6b6b";
+      return;
+    }
+
+    try {
+      const res = await fetch(`${serverUrl}/api/login`, {
+        method: "POST",
         headers: {
-          "Authorization": auth
-        }
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ username, password })
       });
 
-      if (!res.ok) {
-        throw new Error("invalid login or backend not reachable");
+      const data = await safeJson(res);
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || `login failed (${res.status})`);
       }
 
-      if (rememberMe) {
-        localStorage.setItem("cloud9_serverUrl", serverUrl);
-        localStorage.setItem("cloud9_username", username);
-        localStorage.setItem("cloud9_password", password);
+      setStoredValue("cloud9_serverUrl", serverUrl, rememberMe);
+      setStoredValue("cloud9_username", username, rememberMe);
+      setStoredValue("cloud9_password", password, rememberMe);
 
-        sessionStorage.removeItem("cloud9_serverUrl");
-        sessionStorage.removeItem("cloud9_username");
-        sessionStorage.removeItem("cloud9_password");
-      } else {
-        sessionStorage.setItem("cloud9_serverUrl", serverUrl);
-        sessionStorage.setItem("cloud9_username", username);
-        sessionStorage.setItem("cloud9_password", password);
-
-        localStorage.removeItem("cloud9_serverUrl");
-        localStorage.removeItem("cloud9_username");
-        localStorage.removeItem("cloud9_password");
-      }
+      SERVER_URL = serverUrl;
 
       message.textContent = "login successful. redirecting...";
       message.className = "message success";
@@ -132,9 +173,10 @@ function addAuthHeaders(headers = {}) {
         window.location.href = "dashboard.html";
       }, 700);
     } catch (error) {
-      message.textContent = error.message || "something went wrong";
+      message.textContent = explainNetworkError(serverUrl, error);
       message.className = "message error";
       message.style.color = "#ff6b6b";
+      console.error("login error:", error);
     }
   });
 })();
@@ -149,11 +191,7 @@ function addAuthHeaders(headers = {}) {
 
   if (!dashboardRoot) return;
 
-  SERVER_URL = normalizeBaseUrl(
-    localStorage.getItem("cloud9_serverUrl") ||
-    sessionStorage.getItem("cloud9_serverUrl") ||
-    SERVER_URL
-  );
+  SERVER_URL = normalizeBaseUrl(getStoredValue("cloud9_serverUrl") || SERVER_URL);
 
   const views = {
     dashboard: document.getElementById("view-dashboard"),
@@ -173,20 +211,17 @@ function addAuthHeaders(headers = {}) {
 
   function switchView(viewName) {
     Object.entries(views).forEach(([name, section]) => {
-      if (section) {
-        section.classList.toggle("hidden", name !== viewName);
-      }
+      if (section) section.classList.toggle("hidden", name !== viewName);
     });
 
-    navButtons.forEach(btn => {
+    navButtons.forEach((btn) => {
       btn.classList.toggle("active", btn.dataset.view === viewName);
     });
   }
 
   function renderStorage() {
-    const percent = totalStorageGb > 0
-      ? Math.round((usedStorageGb / totalStorageGb) * 100)
-      : 0;
+    const percent =
+      totalStorageGb > 0 ? Math.round((usedStorageGb / totalStorageGb) * 100) : 0;
 
     const storagePercentLabel = document.getElementById("storagePercentLabel");
     const usedStorage = document.getElementById("usedStorage");
@@ -206,9 +241,7 @@ function addAuthHeaders(headers = {}) {
         <div>
           <div class="file-name">${file.name}</div>
           <div class="small-muted">${file.size || "unknown"} • updated ${file.updated || "recently"}</div>
-          <div>
-            <span class="tag">${file.type || "File"}</span>
-          </div>
+          <div><span class="tag">${file.type || "File"}</span></div>
         </div>
         <div class="file-actions">
           <button onclick="downloadFile('${file.path}')">Download</button>
@@ -228,10 +261,15 @@ function addAuthHeaders(headers = {}) {
   }
 
   function renderFiles() {
-    const text = ((fileSearch && fileSearch.value) || (globalSearch && globalSearch.value) || "").toLowerCase();
+    const text = (
+      (fileSearch && fileSearch.value) ||
+      (globalSearch && globalSearch.value) ||
+      ""
+    ).toLowerCase();
+
     const type = fileTypeFilter ? fileTypeFilter.value : "all";
 
-    const filtered = files.filter(file => {
+    const filtered = files.filter((file) => {
       const matchesText =
         file.name.toLowerCase().includes(text) ||
         (file.type || "").toLowerCase().includes(text);
@@ -307,14 +345,35 @@ function addAuthHeaders(headers = {}) {
   }
 
   async function checkServer() {
+    if (!SERVER_URL) {
+      addActivity("No server URL saved");
+      return false;
+    }
+
+    if (isHttpsPage() && isHttpApi(SERVER_URL)) {
+      const serverStatusText = document.getElementById("serverStatusText");
+      const serverSubtext = document.getElementById("serverSubtext");
+      const statusMain = document.getElementById("statusMain");
+
+      if (serverStatusText) serverStatusText.textContent = "Blocked";
+      if (serverSubtext) serverSubtext.textContent = "HTTPS frontend cannot call HTTP backend";
+      if (statusMain) statusMain.textContent = "Blocked";
+
+      addActivity("Blocked: HTTPS frontend cannot call HTTP backend");
+      return false;
+    }
+
     try {
       const res = await fetch(`${SERVER_URL}/api/health`, {
         headers: addAuthHeaders()
       });
 
-      if (!res.ok) throw new Error("health check failed");
+      const data = await safeJson(res);
 
-      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || `health check failed (${res.status})`);
+      }
+
       serverOnline = true;
 
       const serverStatusText = document.getElementById("serverStatusText");
@@ -322,7 +381,7 @@ function addAuthHeaders(headers = {}) {
       const statusMain = document.getElementById("statusMain");
 
       if (serverStatusText) serverStatusText.textContent = "Online";
-      if (serverSubtext) serverSubtext.textContent = data.base_dir || "Raspberry Pi connected";
+      if (serverSubtext) serverSubtext.textContent = data.base_dir || SERVER_URL;
       if (statusMain) statusMain.textContent = "Healthy";
 
       addActivity("Connected to Raspberry Pi server");
@@ -335,10 +394,11 @@ function addAuthHeaders(headers = {}) {
       const statusMain = document.getElementById("statusMain");
 
       if (serverStatusText) serverStatusText.textContent = "Offline";
-      if (serverSubtext) serverSubtext.textContent = "Could not reach Pi server";
+      if (serverSubtext) serverSubtext.textContent = explainNetworkError(SERVER_URL, err);
       if (statusMain) statusMain.textContent = "Offline";
 
       addActivity("Could not connect to Raspberry Pi server");
+      console.error("checkServer error:", err);
       return false;
     }
   }
@@ -349,12 +409,14 @@ function addAuthHeaders(headers = {}) {
         headers: addAuthHeaders()
       });
 
-      if (!res.ok) throw new Error("list failed");
+      const data = await safeJson(res);
 
-      const data = await res.json();
-      const items = Array.isArray(data.items) ? data.items : Array.isArray(data) ? data : [];
+      if (!res.ok) {
+        throw new Error(data.error || `list failed (${res.status})`);
+      }
 
-      files = items.map(item => {
+      const items = Array.isArray(data.items) ? data.items : [];
+      files = items.map((item) => {
         const type = guessType(item.name, item.is_dir);
         return {
           id: item.path,
@@ -374,7 +436,8 @@ function addAuthHeaders(headers = {}) {
     } catch (err) {
       files = [];
       renderFiles();
-      addActivity("Failed to load files from server");
+      addActivity(`Failed to load files: ${err.message}`);
+      console.error("loadFiles error:", err);
     }
   }
 
@@ -388,7 +451,7 @@ function addAuthHeaders(headers = {}) {
         headers: auth ? { Authorization: auth } : {}
       });
 
-      if (!res.ok) throw new Error("download failed");
+      if (!res.ok) throw new Error(`download failed (${res.status})`);
 
       const blob = await res.blob();
       const blobUrl = window.URL.createObjectURL(blob);
@@ -403,6 +466,7 @@ function addAuthHeaders(headers = {}) {
       addActivity(`Started download for ${path}`);
     } catch (err) {
       addActivity(`Download failed for ${path}`);
+      console.error("download error:", err);
     }
   }
 
@@ -416,12 +480,15 @@ function addAuthHeaders(headers = {}) {
         body: JSON.stringify({ path })
       });
 
-      if (!res.ok) throw new Error("delete failed");
+      const data = await safeJson(res);
+
+      if (!res.ok) throw new Error(data.error || `delete failed (${res.status})`);
 
       addActivity(`Deleted ${path}`);
       await loadFiles();
     } catch (err) {
       addActivity(`Delete failed for ${path}`);
+      console.error("delete error:", err);
     }
   }
 
@@ -438,12 +505,15 @@ function addAuthHeaders(headers = {}) {
         body: formData
       });
 
-      if (!res.ok) throw new Error("upload failed");
+      const data = await safeJson(res);
+
+      if (!res.ok) throw new Error(data.error || `upload failed (${res.status})`);
 
       addActivity("Uploaded sample file");
       await loadFiles();
     } catch (err) {
-      addActivity("Upload failed");
+      addActivity(`Upload failed: ${err.message}`);
+      console.error("upload error:", err);
     }
   }
 
@@ -452,7 +522,7 @@ function addAuthHeaders(headers = {}) {
     renderActivity();
   }
 
-  navButtons.forEach(btn => {
+  navButtons.forEach((btn) => {
     btn.addEventListener("click", () => switchView(btn.dataset.view));
   });
 
@@ -475,9 +545,7 @@ function addAuthHeaders(headers = {}) {
   if (toggleServerBtn) {
     toggleServerBtn.addEventListener("click", async () => {
       await checkServer();
-      if (serverOnline) {
-        await loadFiles();
-      }
+      if (serverOnline) await loadFiles();
     });
   }
 
@@ -487,12 +555,17 @@ function addAuthHeaders(headers = {}) {
       if (!serverIp) return;
 
       const ip = serverIp.value.trim();
-      if (ip) {
-        SERVER_URL = `http://${ip}:5000`;
-        localStorage.setItem("cloud9_serverUrl", SERVER_URL);
-        addActivity(`Server IP updated to ${ip}`);
-        alert(`server url saved as ${SERVER_URL}`);
-      }
+      if (!ip) return;
+
+      SERVER_URL = normalizeBaseUrl(
+        ip.startsWith("http://") || ip.startsWith("https://")
+          ? ip
+          : `http://${ip}:5000`
+      );
+
+      localStorage.setItem("cloud9_serverUrl", SERVER_URL);
+      addActivity(`Server URL updated to ${SERVER_URL}`);
+      alert(`server url saved as ${SERVER_URL}`);
     });
   }
 
@@ -509,8 +582,6 @@ function addAuthHeaders(headers = {}) {
 
   (async function init() {
     const ok = await checkServer();
-    if (ok) {
-      await loadFiles();
-    }
+    if (ok) await loadFiles();
   })();
 })();
