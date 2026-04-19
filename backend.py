@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file, redirect
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from pathlib import Path
 from werkzeug.utils import secure_filename
@@ -8,27 +8,42 @@ import secrets
 import socket
 import platform
 import subprocess
+import os
 
 app = Flask(__name__)
 
-CORS(
-    app,
-    resources={
-        r"/api/*": {
-            "origins": [
-                "https://wavy5599.github.io",
-                "https://wavy5599.github.io/cloud-9",
-            ]
-        }
-    }
+def normalize_origin(value: str) -> str:
+    value = (value or "").strip().rstrip("/")
+    if not value:
+        return ""
+    if value.startswith("http://") or value.startswith("https://"):
+        parts = value.split("/", 3)
+        return "/".join(parts[:3])
+    return value
+
+ALLOWED_ORIGINS = list(
+    dict.fromkeys(
+        filter(
+            None,
+            [
+                normalize_origin("https://wavy5599.github.io"),
+                normalize_origin(os.getenv("FRONTEND_URL", "")),
+            ],
+        )
+    )
 )
 
-# hardcoded login for now
-API_USERNAME = "admin"
-API_PASSWORD = "1234"
+CORS(
+    app,
+    resources={r"/api/*": {"origins": ALLOWED_ORIGINS}},
+)
 
-# storage folder
-BASE_DIR = Path.home() / "cloud9_storage"
+API_USERNAME = os.getenv("API_USERNAME", "admin")
+API_PASSWORD = os.getenv("API_PASSWORD", "1234")
+
+BASE_DIR = Path(
+    os.getenv("CLOUD9_STORAGE_DIR", str(Path.home() / "cloud9_storage"))
+)
 BASE_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -44,18 +59,15 @@ def get_local_ip():
 
 
 def get_pi_temp():
-    # method 1: vcgencmd
     try:
         output = subprocess.check_output(
             ["vcgencmd", "measure_temp"],
             stderr=subprocess.DEVNULL
         ).decode().strip()
-
         return output.replace("temp=", "").replace("'C", "").strip()
     except Exception:
         pass
 
-    # method 2: linux thermal file
     try:
         thermal_file = Path("/sys/class/thermal/thermal_zone0/temp")
         if thermal_file.exists():
@@ -107,14 +119,18 @@ def require_auth(fn):
 
 @app.route("/", methods=["GET"])
 def home():
-    return redirect("https://wavy5599.github.io/cloud-9/")
+    return jsonify({
+        "name": "Cloud 9 backend",
+        "status": "online",
+        "allowed_origins": ALLOWED_ORIGINS
+    })
 
 
 @app.route("/api/login", methods=["POST"])
 def login():
     data = request.get_json(silent=True) or {}
     username = data.get("username", "").strip()
-    password = data.get("password", "").strip()
+    password = data.get("password", "")
 
     if check_auth(username, password):
         return jsonify({
@@ -134,7 +150,8 @@ def health():
     return jsonify({
         "status": "ok",
         "authenticated": True,
-        "base_dir": str(BASE_DIR)
+        "base_dir": str(BASE_DIR),
+        "server_url_hint": f"http://{get_local_ip()}:{os.getenv('PORT', '5000')}"
     })
 
 
@@ -299,8 +316,9 @@ def delete_item():
 
 
 if __name__ == "__main__":
+    port = int(os.getenv("PORT", "5000"))
     print("cloud 9 backend starting...")
-    print(f"login username: {API_USERNAME}")
+    print(f"allowed origins: {ALLOWED_ORIGINS}")
     print(f"storage path: {BASE_DIR}")
     print(f"local ip: {get_local_ip()}")
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=port, debug=True)

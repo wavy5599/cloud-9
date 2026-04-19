@@ -1,7 +1,7 @@
 const savedServerUrl =
   localStorage.getItem("cloud9_serverUrl") ||
   sessionStorage.getItem("cloud9_serverUrl") ||
-  "http://192.168.0.11:5000";
+  "https://marc-widespread-lisa-enhanced.trycloudflare.com";
 
 let SERVER_URL = normalizeBaseUrl(savedServerUrl);
 
@@ -12,7 +12,15 @@ let usedStorageGb = 0;
 const totalStorageGb = 500;
 
 function normalizeBaseUrl(url) {
-  return (url || "").trim().replace(/\/+$/, "");
+  let value = (url || "").trim();
+
+  if (!value) return "";
+
+  if (!/^https?:\/\//i.test(value)) {
+    value = `https://${value}`;
+  }
+
+  return value.replace(/\/+$/, "");
 }
 
 function isHttpsPage() {
@@ -91,11 +99,13 @@ async function safeJson(res) {
     const passwordField = document.getElementById("password");
     const rememberMeField = document.getElementById("rememberMe");
 
-    const savedUrl = getStoredValue("cloud9_serverUrl");
+    const savedUrl =
+      getStoredValue("cloud9_serverUrl") ||
+      "https://marc-widespread-lisa-enhanced.trycloudflare.com";
     const savedUsername = getStoredValue("cloud9_username");
     const savedPassword = getStoredValue("cloud9_password");
 
-    if (serverUrlField && savedUrl) serverUrlField.value = savedUrl;
+    if (serverUrlField) serverUrlField.value = savedUrl;
     if (usernameField && savedUsername) usernameField.value = savedUsername;
     if (passwordField && savedPassword) passwordField.value = savedPassword;
     if (rememberMeField && localStorage.getItem("cloud9_username")) {
@@ -554,16 +564,14 @@ async function safeJson(res) {
       const serverIp = document.getElementById("serverIp");
       if (!serverIp) return;
 
-      const ip = serverIp.value.trim();
-      if (!ip) return;
+      const input = serverIp.value.trim();
+      if (!input) return;
 
-      SERVER_URL = normalizeBaseUrl(
-        ip.startsWith("http://") || ip.startsWith("https://")
-          ? ip
-          : `http://${ip}:5000`
-      );
+      SERVER_URL = normalizeBaseUrl(input);
 
       localStorage.setItem("cloud9_serverUrl", SERVER_URL);
+      sessionStorage.setItem("cloud9_serverUrl", SERVER_URL);
+
       addActivity(`Server URL updated to ${SERVER_URL}`);
       alert(`server url saved as ${SERVER_URL}`);
     });
